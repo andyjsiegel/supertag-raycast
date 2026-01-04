@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TDD Test Suite** - Comprehensive test coverage with 41 passing tests
+  - CLI function tests (20 tests) - all wrapper functions with error handling
+  - Nested nodes tests (10 tests) - multi-level nesting up to 4+ levels deep
+  - Schema cache tests (11 tests) - cache loading, invalidation, error handling
+  - Test scripts added: `npm test` and `npm run test:watch`
+  - Uses Bun's built-in test runner for fast execution
+
+- **Name Field in Capture** - Clearer parent/child structure
+  - New Name field (required) for parent node
+  - Children field (optional) for nested content
+  - Separates parent name from child structure
+  - Supports creating simple nodes (name only) or complex hierarchies
+
 - **Schema Cache (Spec 081)** - Fast file-based schema loading for 20-50x performance improvement
   - New `SchemaCache` class reads schema-registry.json directly from filesystem
   - Form rendering now <10ms vs 200-500ms with CLI spawning
@@ -29,6 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Example: "Company" field now correctly loads options from "company" supertag
 
 ### Fixed
+
+- **Multi-Level Nested Nodes** - Fixed recursive children conversion for unlimited depth
+  - Nested children now work correctly at all levels (tested to 4+ levels)
+  - Fixed `tanaNodeToApiNode` in supertag-cli to recursively convert children
+  - Previously only converted 1 level deep, grandchildren were lost
+  - Children array property now properly recognized by JSON parser
+  - Added comprehensive tests verifying multi-level nesting
+
+- **Better Error Handling** - Improved error messages in CLI functions
+  - `listSupertags` now captures and reports stderr output
+  - More descriptive error messages with context
+  - Parse errors include details for debugging
+  - Exit codes reported with helpful context
 
 - **Company Field Dropdown** - Company field dropdown now populates correctly
   - Previously empty due to field name mismatch (Company vs company)

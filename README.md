@@ -1,17 +1,94 @@
-# KAI Raycast Extension
+# Supertag Raycast Extension
 
-Quick access to KAI AI assistant capabilities from Raycast.
+Quick access to Tana via supertag-cli from Raycast.
 
 ## Commands
 
 | Command | Description | Mode |
 |---------|-------------|------|
-| Export Context | Export personal context to clipboard | No View |
-| Capture to Tana | Quick capture with supertag selection | Form |
+| **Capture to Tana** | **Quick capture with nested node support** | **Form** |
 | **Create Tana Node** | **Dynamic form for any supertag with field support** | **List + Form** |
-| Ask KAI | Ask a question, get inline or terminal response | Form + Detail |
-| Today's Briefing | Show daily summary (calendar, tasks, email) | Detail |
-| KAI Commands | Browse and launch k CLI commands | List |
+
+### Capture to Tana Features
+
+The **Capture to Tana** command provides quick plain node creation with children:
+
+- **Name field** - Main node name (required)
+- **Children field** - Optional nested children with unlimited depth
+- **Multi-level nesting** - Use indentation with "-" to create hierarchy
+  - Indentation (spaces/tabs) determines nesting level
+  - Lines with or without "-" prefix both work
+- **No supertag required** - Creates plain nodes without tags
+- **Tana Paste format** - Generates proper `%%tana%%` format for fallback
+- **Manual fallback** - Copy Tana Paste to clipboard if CLI fails
+
+**Example - Node with children:**
+```
+Name: Project Plan
+Children:
+  - Phase 1
+    - Task 1.1
+      - Subtask 1.1.1
+  - Phase 2
+```
+
+**Example - Deep nesting (unlimited depth):**
+```
+Name: Engineering Roadmap
+Children:
+  - Q1 2026
+    - Backend
+      - API Refactor
+        - Authentication endpoints
+        - Rate limiting
+      - Database optimization
+    - Frontend
+      - UI redesign
+        - Component library
+  - Q2 2026
+    - Mobile app
+```
+
+**Generated JSON (sent to Tana Input API):**
+```json
+[{
+  "name": "Engineering Roadmap",
+  "children": [{
+    "name": "Q1 2026",
+    "children": [
+      {
+        "name": "Backend",
+        "children": [
+          {
+            "name": "API Refactor",
+            "children": [
+              {"name": "Authentication endpoints"},
+              {"name": "Rate limiting"}
+            ]
+          },
+          {"name": "Database optimization"}
+        ]
+      },
+      {
+        "name": "Frontend",
+        "children": [
+          {
+            "name": "UI redesign",
+            "children": [{"name": "Component library"}]
+          }
+        ]
+      }
+    ]
+  }]
+}]
+```
+
+**Key points:**
+- Name field creates the parent node
+- Children field is optional (for plain nodes without children)
+- Indentation (2 spaces recommended) determines nesting level
+- Unlimited nesting depth supported (tested to 4+ levels)
+- Empty lines in children are ignored
 
 ### Create Tana Node Features
 
@@ -35,17 +112,15 @@ The **Create Tana Node** command provides a dynamic form builder for Tana:
 ## Prerequisites
 
 - [Raycast](https://raycast.com/) installed
-- `k` CLI (kai-launcher) installed at `~/bin/k`
-- `supertag` CLI (supertag-cli) installed at `~/work/supertag-cli/supertag`
-- KAI infrastructure set up
-- Tana workspace synced (required for Create Tana Node command)
+- `supertag` CLI ([supertag-cli](https://github.com/jcfischer/supertag-cli)) installed at `~/bin/supertag`
+- Tana workspace synced via supertag-cli
 
 ## Installation
 
 ### Development
 
 ```bash
-cd ~/work/kai-raycast
+cd ~/work/supertag-raycast
 npm install
 npm run dev  # Opens extension in Raycast
 ```
@@ -60,32 +135,39 @@ npm run build
 ## Architecture
 
 ```
-kai-raycast
+supertag-raycast
 ├── src/
-│   ├── export-context.tsx      # No-view command
-│   ├── capture-tana.tsx        # Form command
+│   ├── capture-tana.tsx        # Form command for quick capture
 │   ├── create-tana-node.tsx    # List + Dynamic form command
-│   ├── ask-kai.tsx             # Form + Detail command
-│   ├── briefing.tsx            # Detail command
-│   ├── commands.tsx            # List command
 │   └── lib/
-│       ├── cli.ts              # k + supertag CLI wrappers (execa)
+│       ├── cli.ts              # supertag CLI wrappers (execa)
 │       ├── schema-cache.ts     # File-based schema registry cache
-│       ├── types.ts            # Zod schemas
+│       ├── types.ts            # Supertag type definitions
 │       ├── fallbacks.ts        # Error handling utilities
 │       └── terminal.ts         # Terminal launcher
 ```
 
 ## How It Works
 
-All commands call the `k` CLI with `--json` flag and parse the response:
+Commands call the `supertag` CLI and parse the response:
 
 ```typescript
-// Example: Export context
-const result = await exportContext("minimal");
+// Example: Capture to Tana with nested nodes
+const tanaPaste = buildTanaPaste(`
+Parent task
+- First subtask
+  - Nested item
+`);
+const result = await capturePlainNode(tanaPaste);
 if (result.success) {
-  await Clipboard.copy(result.data.content);
+  showToast({ title: "Created node in Tana" });
 }
+
+// Example: Create structured node with fields
+const result = await createTanaNode("meeting", "Weekly Sync", {
+  Date: "2026-01-06",
+  Status: "Scheduled"
+});
 ```
 
 ## Fallback Behavior
@@ -99,14 +181,13 @@ When CLI commands fail:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| K_PATH | ~/bin/k | Path to k CLI binary |
-| SUPERTAG_PATH | ~/work/supertag-cli/supertag | Path to supertag CLI binary |
+| SUPERTAG_PATH | ~/bin/supertag | Path to supertag CLI binary |
 
 ## Dependencies
 
 - `@raycast/api` - Raycast extension SDK
-- `execa` - Execute CLI commands (k and supertag)
-- `zod` - Validate CLI responses
+- `execa` - Execute CLI commands (supertag)
+- `zod` - Validate responses
 
 ## Known Issues & Fixes
 
@@ -122,7 +203,11 @@ When CLI commands fail:
 - ✅ **Fixed**: Case-insensitive tag matching + increased limit to 200
 - Example: "Company" field now finds lowercase "company" supertag nodes
 
+### Performance Improvements
+- ✅ **Spec 081**: Schema cache provides 20-50x performance improvement
+- File-based cache reads `schema-registry.json` directly (<10ms)
+- Automatic fallback to CLI if cache unavailable
+
 ## Related
 
-- [kai-launcher](../kai-launcher) - The `k` CLI that powers this extension
-- [KAI Skills](~/.claude/skills) - Full KAI infrastructure
+- [supertag-cli](https://github.com/jcfischer/supertag-cli) - The CLI that powers this extension

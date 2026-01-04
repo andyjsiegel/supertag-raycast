@@ -8,21 +8,106 @@ import {
   Clipboard,
 } from "@raycast/api";
 import { useState } from "react";
-import { captureTana } from "./lib/cli";
-import { SUPERTAGS, type Supertag } from "./lib/types";
+import { capturePlainNode } from "./lib/cli";
 import { showErrorWithFallback } from "./lib/fallbacks";
+
+interface TanaNode {
+  name: string;
+  children?: TanaNode[];
+}
+
+/**
+ * Parse multi-line text with indented nodes into Tana Input API JSON format
+ * Creates a single parent node with name, and parses content as children
+ */
+function buildTanaJSON(name: string, content: string): TanaNode[] {
+  const parentNode: TanaNode = { name };
+
+  // If there's content, parse it as children
+  if (content.trim()) {
+    const lines = content.split("\n").filter((line) => line.trim());
+
+    interface ParsedLine {
+      indent: number;
+      text: string;
+    }
+
+    // Parse lines and calculate indentation levels
+    const parsed: ParsedLine[] = lines.map((line) => {
+      const trimmed = line.trimStart();
+      const nodeContent = trimmed.startsWith("-") ? trimmed.slice(1).trim() : trimmed;
+      const indent = line.search(/\S/);
+      return { indent, text: nodeContent };
+    });
+
+    // Build tree structure for children
+    const children: TanaNode[] = [];
+    const stack: { node: TanaNode; indent: number }[] = [];
+
+    for (const { indent, text } of parsed) {
+      const node: TanaNode = { name: text };
+
+      // Pop stack until we find the parent level
+      while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+
+      if (stack.length === 0) {
+        // Root level child
+        children.push(node);
+      } else {
+        // Nested child
+        const parent = stack[stack.length - 1].node;
+        if (!parent.children) {
+          parent.children = [];
+        }
+        parent.children.push(node);
+      }
+
+      stack.push({ node, indent });
+    }
+
+    if (children.length > 0) {
+      parentNode.children = children;
+    }
+  }
+
+  return [parentNode];
+}
+
+/**
+ * Build Tana Paste format for manual clipboard fallback
+ */
+function buildTanaPaste(text: string): string {
+  const lines = text.split("\n");
+  const formattedLines: string[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+
+    if (line.trimStart().startsWith("-")) {
+      const indent = line.search(/\S/);
+      const content = line.trimStart();
+      formattedLines.push(" ".repeat(indent) + content);
+    } else {
+      formattedLines.push("- " + line.trim());
+    }
+  }
+
+  return `%%tana%%\n${formattedLines.join("\n")}`;
+}
 
 export default function Command() {
   const [isLoading, setIsLoading] = useState(false);
+  const [name, setName] = useState("");
   const [text, setText] = useState("");
-  const [supertag, setSupertag] = useState<Supertag>("todo");
 
   async function handleSubmit() {
-    if (!text.trim()) {
+    if (!name.trim()) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Error",
-        message: "Please enter some text",
+        message: "Please enter a name for the node",
       });
       return;
     }
@@ -35,20 +120,20 @@ export default function Command() {
     });
 
     try {
-      const result = await captureTana(text.trim(), supertag);
+      const tanaJSON = buildTanaJSON(name.trim(), text);
+      const result = await capturePlainNode(JSON.stringify(tanaJSON));
 
       if (result.success && result.data) {
         toast.style = Toast.Style.Success;
         toast.title = "Created in Tana!";
-        toast.message = `#${supertag}: "${text.slice(0, 30)}${text.length > 30 ? "..." : ""}"`;
+        toast.message = `"${name.slice(0, 30)}${name.length > 30 ? "..." : ""}"`;
 
         await popToRoot();
       } else {
         toast.hide();
 
-        // Fallback: generate Tana Paste manually
-        const tanaPaste = `%%tana%%\n- ${text.trim()} #${supertag}`;
-
+        // Fallback: copy Tana Paste manually
+        const tanaPaste = buildTanaPaste(name + "\n" + text);
         await showErrorWithFallback(result.error || "Failed to create Tana node", [
           {
             action: "clipboard",
@@ -60,8 +145,8 @@ export default function Command() {
     } catch (error) {
       toast.hide();
 
-      // Fallback: generate Tana Paste manually
-      const tanaPaste = `%%tana%%\n- ${text.trim()} #${supertag}`;
+      // Fallback: copy Tana Paste manually
+      const tanaPaste = buildTanaPaste(name + "\n" + text);
 
       await showErrorWithFallback(
         error instanceof Error ? error.message : "Unknown error",
@@ -88,8 +173,8 @@ export default function Command() {
             title="Copy as Tana Paste"
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
             onAction={async () => {
-              if (text.trim()) {
-                const paste = `%%tana%%\n- ${text.trim()} #${supertag}`;
+              if (name.trim()) {
+                const paste = buildTanaPaste(name + (text ? "\n" + text : ""));
                 await Clipboard.copy(paste);
                 await showToast({
                   style: Toast.Style.Success,
@@ -101,31 +186,22 @@ export default function Command() {
         </ActionPanel>
       }
     >
-      <Form.TextArea
-        id="text"
-        title="Content"
-        placeholder="Enter your note, task, or idea..."
-        value={text}
-        onChange={setText}
+      <Form.TextField
+        id="name"
+        title="Name"
+        placeholder="Enter node name..."
+        value={name}
+        onChange={setName}
         autoFocus
       />
-      <Form.Dropdown
-        id="supertag"
-        title="Supertag"
-        value={supertag}
-        onChange={(value) => setSupertag(value as Supertag)}
-      >
-        {SUPERTAGS.map((tag) => (
-          <Form.Dropdown.Item
-            key={tag}
-            value={tag}
-            title={tag.charAt(0).toUpperCase() + tag.slice(1)}
-            icon={
-              tag === "todo" ? "checkmark-circle" : tag === "note" ? "doc" : "lightbulb"
-            }
-          />
-        ))}
-      </Form.Dropdown>
+      <Form.TextArea
+        id="content"
+        title="Children (optional)"
+        placeholder="- Child 1&#10;  - Grandchild&#10;- Child 2"
+        value={text}
+        onChange={setText}
+        enableMarkdown={false}
+      />
     </Form>
   );
 }

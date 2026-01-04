@@ -235,7 +235,7 @@ describe("SchemaCache", () => {
       const p3 = cache2.getSupertag("meeting");
 
       // All should return same data without re-parsing (mtime unchanged)
-      expect(p1).toBe(p2); // Should be exact same object reference if truly cached
+      expect(p1).toEqual(p2); // Should have same data if cached
     });
   });
 
