@@ -67,6 +67,7 @@ const NameField = memo(({
       placeholder={`Enter ${supertag.tagName} name...`}
       value={name}
       onChange={handleChange}
+      autoFocus={false}
     />
   );
 });
@@ -256,7 +257,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
       <Form.Separator />
 
-      {visibleFields.map((field) => (
+      {visibleFields.map((field, index) => (
         <FieldInput
           key={field.fieldLabelId}
           field={field}
@@ -265,6 +266,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           onChange={(value) =>
             setFieldValues((prev) => ({ ...prev, [field.fieldName]: value }))
           }
+          autoFocus={index === 0}
         />
       ))}
     </Form>
@@ -279,11 +281,13 @@ function FieldInput({
   value,
   options,
   onChange,
+  autoFocus = false,
 }: {
   field: SupertagField;
   value: string;
   options?: FieldOption[];
   onChange: (value: string) => void;
+  autoFocus?: boolean;
 }) {
   const title = field.fieldName;
   const placeholder = field.originTagName !== field.fieldName
@@ -377,6 +381,7 @@ function FieldInput({
           placeholder={placeholder}
           value={value}
           onChange={onChange}
+          autoFocus={autoFocus}
         />
       );
   }
