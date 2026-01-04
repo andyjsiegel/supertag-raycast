@@ -196,9 +196,9 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           continue;
         }
 
-        // Create inline reference using Tana's text format
-        // Format: "Name #supertag" creates a new node and links it
-        fields[key] = `${newName} #${fieldSchema.targetSupertagName}`;
+        // Create inline reference using Tana's [[node]] syntax with tag
+        // Format: "[[Name #supertag]]" creates a new node and links it
+        fields[key] = `[[${newName} #${fieldSchema.targetSupertagName}]]`;
         hasNewNodes = true;
         toast.message = `Will create ${fieldSchema.targetSupertagName}: ${newName}`;
       } else {
