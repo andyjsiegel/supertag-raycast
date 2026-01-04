@@ -173,37 +173,24 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       title: "Creating node...",
     });
 
-    // Build field values, handling "NEW:" values as inline node creation
-    const fields: Record<string, any> = {};
-    let hasNewNodes = false;
+    // Build field values - supertag-cli now handles creating tagged nodes for reference fields
+    const fields: Record<string, string> = {};
 
     for (const [key, value] of Object.entries(fieldValues)) {
       if (!value.trim()) continue;
 
-      // Check if this is a "create new" value
+      // Check if this is a "create new" value from the text field
       if (value.startsWith("NEW:")) {
         const newName = value.substring(4).trim();
-        if (!newName) continue;
-
-        // Find the field schema to get target supertag
-        const fieldSchema = schema?.fields.find((f) => f.fieldName === key);
-        if (!fieldSchema?.targetSupertagName) {
-          // Can't create without knowing target supertag - use text value
+        if (newName) {
+          // Pass the name directly - supertag-cli will create a tagged node
           fields[key] = newName;
-          continue;
         }
-
-        // Create inline reference using Tana's [[node]] syntax with tag
-        // Format: "[[Name #supertag]]" creates a new node and links it
-        fields[key] = `[[${newName} #${fieldSchema.targetSupertagName}]]`;
-        hasNewNodes = true;
-        toast.message = `Will create ${fieldSchema.targetSupertagName}: ${newName}`;
       } else {
         fields[key] = value.trim();
       }
     }
 
-    toast.message = undefined;
     const result = await createTanaNode(
       supertag.tagName,
       name.trim(),
