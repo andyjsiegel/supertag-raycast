@@ -55,6 +55,10 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
   useEffect(() => {
     async function loadSchema() {
+      // Stop loading immediately so user can start typing in name field
+      // Schema and options will load in background without blocking input
+      setIsLoading(false);
+
       // Spec 081 T-3.1, T-3.2: Try SchemaCache first, fallback to CLI
       const cache = new SchemaCache();
       const cachedSchema = cache.getSupertag(supertag.tagName);
@@ -106,9 +110,6 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           }
           return initial;
         });
-
-        // Stop loading indicator immediately so user can start typing
-        setIsLoading(false);
 
         // Load options in background (doesn't block user input)
         const optionsFields = schemaData.fields.filter(
@@ -179,12 +180,9 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           continue;
         }
 
-        // Create nested node object - Tana Input API supports inline node creation
-        // Format: field value as object with name and supertag
-        fields[key] = {
-          name: newName,
-          supertag: fieldSchema.targetSupertagName,
-        };
+        // Create inline reference using Tana's text format
+        // Format: "Name #supertag" creates a new node and links it
+        fields[key] = `${newName} #${fieldSchema.targetSupertagName}`;
         hasNewNodes = true;
         toast.message = `Will create ${fieldSchema.targetSupertagName}: ${newName}`;
       } else {
