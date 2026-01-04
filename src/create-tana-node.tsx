@@ -54,10 +54,24 @@ const NameField = memo(({
   onNameChange: (name: string) => void;
 }) => {
   const [name, setName] = useState("");
+  const cursorPosRef = useRef(0);
 
   const handleChange = (newName: string) => {
     setName(newName);
     onNameChange(newName);
+    // Store cursor position (will be at end after typing)
+    cursorPosRef.current = newName.length;
+  };
+
+  const handleFocus = () => {
+    // When field gets focus, restore cursor to end (prevents full selection)
+    // Use setTimeout to ensure this runs after Raycast's selection
+    setTimeout(() => {
+      const input = document.getElementById("name") as HTMLInputElement;
+      if (input && name.length > 0) {
+        input.setSelectionRange(cursorPosRef.current, cursorPosRef.current);
+      }
+    }, 0);
   };
 
   return (
@@ -67,6 +81,7 @@ const NameField = memo(({
       placeholder={`Enter ${supertag.tagName} name...`}
       value={name}
       onChange={handleChange}
+      onFocus={handleFocus}
       autoFocus={false}
     />
   );
