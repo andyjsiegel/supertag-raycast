@@ -44,73 +44,31 @@ function getFieldIcon(dataType: string): Icon {
 }
 
 /**
- * Isolated name field component that doesn't re-render when parent state changes
+ * First screen: Simple name input
+ * Loads schema/options in background while user types
  */
-const NameField = memo(({
-  supertag,
-  onNameChange
-}: {
-  supertag: SupertagInfo;
-  onNameChange: (name: string) => void;
-}) => {
+function NameInputForm({ supertag }: { supertag: SupertagInfo }) {
   const [name, setName] = useState("");
+  const { push } = useNavigation();
 
-  const handleChange = (newName: string) => {
-    setName(newName);
-    onNameChange(newName);
-  };
-
-  return (
-    <Form.TextField
-      id="name"
-      title="Name"
-      placeholder="Type name first, then wait for fields to load"
-      info="Note: Text may become selected when fields load - just click to deselect"
-      value={name}
-      onChange={handleChange}
-      autoFocus={false}
-    />
-  );
-});
-
-/**
- * Dynamic form for creating a node with the selected supertag
- */
-function NodeForm({ supertag }: { supertag: SupertagInfo }) {
-  const [schema, setSchema] = useState<SupertagSchema | null>(null);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [fieldOptions, setFieldOptions] = useState<Record<string, FieldOption[]>>({});
-
-  // Use ref to store name value - stable across re-renders
-  const nameRef = useRef("");
-
-  // Initialize visibleFields with empty array to prevent structure changes
-  const [visibleFields, setVisibleFields] = useState<SupertagField[]>([]);
-
-  // Stable callback for name changes - wrapped in useCallback so NameField doesn't re-render
-  const handleNameChange = useCallback((newName: string) => {
-    nameRef.current = newName;
-  }, []);
+  // Pre-load schema and options in background
+  const [preloadedData, setPreloadedData] = useState<{
+    schema: SupertagSchema | null;
+    fieldOptions: Record<string, FieldOption[]>;
+  }>({ schema: null, fieldOptions: {} });
 
   useEffect(() => {
-    async function loadSchema() {
-      // Load schema in background without blocking user input
-
-      // Spec 081 T-3.1, T-3.2: Try SchemaCache first, fallback to CLI
+    async function preloadSchema() {
+      // Load schema in background while user types
       const cache = new SchemaCache();
       const cachedSchema = cache.getSupertag(supertag.tagName);
 
       let schemaData: SupertagSchema | null = null;
-      let cacheHit = false;
 
       if (cachedSchema) {
-        // Spec 081 T-3.4: Cache hit - log for development
         if (process.env.NODE_ENV === "development") {
           console.log("[SchemaCache] Cache HIT:", supertag.tagName);
         }
-        cacheHit = true;
-
-        // Convert cached schema to SupertagSchema format
         schemaData = {
           tagId: cachedSchema.id,
           tagName: cachedSchema.name,
@@ -125,7 +83,6 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           })),
         };
       } else {
-        // Spec 081 T-3.2: Cache miss - fallback to CLI
         if (process.env.NODE_ENV === "development") {
           console.log("[SchemaCache] Cache MISS, using CLI:", supertag.tagName);
         }
@@ -136,41 +93,15 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       }
 
       if (schemaData) {
-        setSchema(schemaData);
-
-        // Filter fields
-        const filtered = schemaData.fields.filter((f) => {
-          // Skip very deep inherited fields
-          if (f.depth > 2) return false;
-          return true;
-        });
-
-        // Delay rendering fields to let name field settle and prevent text selection
-        setTimeout(() => {
-          setVisibleFields(filtered);
-        }, 100);
-
-        // Initialize field values - only set once to preserve user input
-        setFieldValues((prev) => {
-          const initial: Record<string, string> = {};
-          for (const field of filtered) {
-            // Preserve existing value if user already started typing
-            initial[field.fieldName] = prev[field.fieldName] || "";
-          }
-          return initial;
-        });
-
-        // Load options in background (doesn't block user input)
+        // Load options for reference/options fields
         const optionsFields = schemaData.fields.filter(
           (f) => f.inferredDataType === "options" || f.inferredDataType === "reference"
         );
         const optionsPromises = optionsFields.map(async (field) => {
           if (field.inferredDataType === "options") {
-            // Regular options field - get from field values
             const optResult = await getFieldOptions(field.fieldName);
             return { fieldName: field.fieldName, options: optResult.data || [] };
           } else {
-            // Spec 081 T-3.3: Reference field - use cached targetSupertagName
             if (field.targetSupertagName) {
               const optResult = await getNodesBySupertag(field.targetSupertagName);
               return { fieldName: field.fieldName, options: optResult.data || [] };
@@ -182,23 +113,17 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         const optionsMap: Record<string, FieldOption[]> = {};
         for (const { fieldName, options } of optionsResults) {
           optionsMap[fieldName] = options;
-          if (process.env.NODE_ENV === "development") {
-            console.log(`[FieldOptions] ${fieldName}: ${options.length} options`);
-          }
         }
-        setFieldOptions(optionsMap);
-      } else {
-        setIsLoading(false);
+
+        setPreloadedData({ schema: schemaData, fieldOptions: optionsMap });
       }
     }
-    loadSchema();
+    preloadSchema();
   }, [supertag.tagName]);
 
-  async function handleSubmit() {
-    const nodeName = nameRef.current.trim();
-
-    if (!nodeName) {
-      await showToast({
+  const handleSubmit = () => {
+    if (!name.trim()) {
+      showToast({
         style: Toast.Style.Failure,
         title: "Name required",
         message: "Please enter a name for the node",
@@ -206,6 +131,64 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       return;
     }
 
+    // Navigate to full form with preloaded data
+    push(
+      <FullNodeForm
+        supertag={supertag}
+        initialName={name}
+        preloadedSchema={preloadedData.schema}
+        preloadedOptions={preloadedData.fieldOptions}
+      />
+    );
+  };
+
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Continue" onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField
+        id="name"
+        title="Name"
+        placeholder={`Enter ${supertag.tagName} name...`}
+        value={name}
+        onChange={setName}
+        autoFocus
+      />
+      <Form.Description
+        title="Loading"
+        text={preloadedData.schema ? "✓ Schema loaded" : "Loading schema in background..."}
+      />
+    </Form>
+  );
+}
+
+/**
+ * Second screen: Full form with all fields pre-rendered
+ * No dynamic field insertion - everything is ready from the start
+ */
+function FullNodeForm({
+  supertag,
+  initialName,
+  preloadedSchema,
+  preloadedOptions,
+}: {
+  supertag: SupertagInfo;
+  initialName: string;
+  preloadedSchema: SupertagSchema | null;
+  preloadedOptions: Record<string, FieldOption[]>;
+}) {
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+
+  // Compute visible fields immediately from preloaded schema (no dynamic insertion)
+  const visibleFields = preloadedSchema
+    ? preloadedSchema.fields.filter((f) => f.depth <= 2)
+    : [];
+
+  async function handleSubmit() {
     const toast = await showToast({
       style: Toast.Style.Animated,
       title: "Creating node...",
@@ -231,14 +214,14 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
     const result = await createTanaNode(
       supertag.tagName,
-      nodeName,
+      initialName,
       Object.keys(fields).length > 0 ? fields : undefined
     );
 
     if (result.success) {
       toast.style = Toast.Style.Success;
       toast.title = "Created in Tana!";
-      toast.message = `#${supertag.tagName}: ${nodeName}`;
+      toast.message = `#${supertag.tagName}: ${initialName}`;
       await popToRoot();
     } else {
       toast.style = Toast.Style.Failure;
@@ -255,11 +238,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         </ActionPanel>
       }
     >
-      <NameField
-        key="node-name-field"
-        supertag={supertag}
-        onNameChange={handleNameChange}
-      />
+      <Form.Description title="Name" text={initialName} />
 
       <Form.Separator />
 
@@ -268,7 +247,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           key={field.fieldLabelId}
           field={field}
           value={fieldValues[field.fieldName] || ""}
-          options={fieldOptions[field.fieldName]}
+          options={preloadedOptions[field.fieldName]}
           onChange={(value) =>
             setFieldValues((prev) => ({ ...prev, [field.fieldName]: value }))
           }
@@ -444,7 +423,7 @@ export default function Command() {
               <Action
                 title="Create Node"
                 icon={Icon.Plus}
-                onAction={() => push(<NodeForm supertag={tag} />)}
+                onAction={() => push(<NameInputForm supertag={tag} />)}
               />
             </ActionPanel>
           }
