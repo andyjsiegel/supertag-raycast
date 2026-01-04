@@ -4,7 +4,7 @@ import type { BrowserTab } from "./types";
 /**
  * Supported browser names
  */
-export type BrowserName = "Safari" | "Google Chrome" | "Arc" | "Firefox";
+export type BrowserName = "Safari" | "Google Chrome" | "Arc" | "Firefox" | "Zen" | "Brave Browser";
 
 /**
  * AppleScript templates for each browser
@@ -20,8 +20,17 @@ const BROWSER_SCRIPTS: Record<BrowserName, { tab: string; selection: string }> =
     `,
     selection: `
       tell application "Safari"
-        set theSelection to do JavaScript "window.getSelection().toString()" in current tab of front window
-        return theSelection
+        try
+          -- This requires "Allow JavaScript from Apple Events" in Safari's Develop menu
+          set theSelection to do JavaScript "window.getSelection().toString()" in current tab of front window
+          if theSelection is missing value then
+            return ""
+          end if
+          return theSelection
+        on error errMsg
+          -- JavaScript might be disabled or permission not granted
+          return ""
+        end try
       end tell
     `,
   },
@@ -56,28 +65,82 @@ const BROWSER_SCRIPTS: Record<BrowserName, { tab: string; selection: string }> =
     `,
   },
   Firefox: {
+    // Firefox doesn't expose tab URL via AppleScript - only window title available
+    // URL must be entered manually or pasted from clipboard
     tab: `
-      tell application "System Events"
-        tell process "Firefox"
-          -- Firefox doesn't expose URL via AppleScript easily
-          -- We'll try to get it via UI scripting
-          keystroke "l" using command down
-          delay 0.1
-          keystroke "c" using command down
-          delay 0.1
-          keystroke "w" using command down
-        end tell
+      tell application "Firefox"
+        set theTitle to name of front window
+        -- Remove " - Mozilla Firefox" suffix if present
+        if theTitle ends with " - Mozilla Firefox" then
+          set theTitle to text 1 thru -19 of theTitle
+        end if
+        if theTitle ends with " — Mozilla Firefox" then
+          set theTitle to text 1 thru -19 of theTitle
+        end if
       end tell
-      return (the clipboard)
+
+      -- Try to get URL from clipboard (user may have copied it)
+      try
+        set clipContent to the clipboard as text
+        if clipContent starts with "http" then
+          return clipContent & "\n" & theTitle
+        end if
+      end try
+
+      -- Return placeholder URL - user must enter manually
+      return "https://\n" & theTitle
     `,
     selection: `
-      tell application "System Events"
-        tell process "Firefox"
-          keystroke "c" using command down
-        end tell
+      -- Firefox selection not available without activating the app
+      -- Return empty - user can paste selection manually
+      return ""
+    `,
+  },
+  Zen: {
+    // Zen is Firefox-based, same limitations apply
+    tab: `
+      tell application "Zen"
+        set theTitle to name of front window
+        -- Remove " - Zen" suffix if present
+        if theTitle ends with " - Zen" then
+          set theTitle to text 1 thru -7 of theTitle
+        end if
+        if theTitle ends with " — Zen" then
+          set theTitle to text 1 thru -7 of theTitle
+        end if
       end tell
-      delay 0.1
-      return (the clipboard)
+
+      -- Try to get URL from clipboard (user may have copied it)
+      try
+        set clipContent to the clipboard as text
+        if clipContent starts with "http" then
+          return clipContent & "\n" & theTitle
+        end if
+      end try
+
+      -- Return placeholder URL - user must enter manually
+      return "https://\n" & theTitle
+    `,
+    selection: `
+      -- Zen selection not available without activating the app
+      -- Return empty - user can paste selection manually
+      return ""
+    `,
+  },
+  "Brave Browser": {
+    // Brave is Chromium-based, works like Chrome
+    tab: `
+      tell application "Brave Browser"
+        set theURL to URL of active tab of front window
+        set theTitle to title of active tab of front window
+        return theURL & "\n" & theTitle
+      end tell
+    `,
+    selection: `
+      tell application "Brave Browser"
+        set theSelection to execute active tab of front window javascript "window.getSelection().toString()"
+        return theSelection
+      end tell
     `,
   },
 };
@@ -86,35 +149,98 @@ const BROWSER_SCRIPTS: Record<BrowserName, { tab: string; selection: string }> =
  * Get list of supported browsers
  */
 export function getSupportedBrowsers(): BrowserName[] {
-  return ["Safari", "Google Chrome", "Arc", "Firefox"];
+  return ["Safari", "Google Chrome", "Arc", "Brave Browser", "Firefox", "Zen"];
 }
 
 /**
- * Detect which supported browser is currently frontmost
+ * Detect which supported browser was most recently active
+ * Uses CGWindowListCopyWindowInfo to get actual window z-order (front to back)
  */
 export async function detectFrontmostBrowser(): Promise<BrowserName | null> {
+  try {
+    // Use Swift to query CoreGraphics for window z-order
+    // This gives us windows in front-to-back order, so the first browser we find is frontmost
+    const swiftCode = `
+import Cocoa
+import CoreGraphics
+
+let browsers: Set<String> = ["Safari", "Google Chrome", "Arc", "Firefox", "Zen", "Brave Browser"]
+let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
+if let windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] {
+    for window in windowList {
+        if let owner = window["kCGWindowOwnerName"] as? String,
+           let layer = window["kCGWindowLayer"] as? Int,
+           browsers.contains(owner) && layer == 0 {
+            print(owner)
+            break
+        }
+    }
+}
+`;
+
+    const { stdout } = await execa("swift", ["-e", swiftCode], {
+      timeout: 5000,
+    });
+
+    const browserName = stdout.trim();
+    if (browserName && isValidBrowserName(browserName)) {
+      return browserName as BrowserName;
+    }
+
+    return null;
+  } catch {
+    // Fallback to checking which browsers have windows open
+    return detectFrontmostBrowserFallback();
+  }
+}
+
+/**
+ * Check if a string is a valid browser name
+ */
+function isValidBrowserName(name: string): name is BrowserName {
+  const validNames: BrowserName[] = ["Safari", "Google Chrome", "Arc", "Firefox", "Zen", "Brave Browser"];
+  return validNames.includes(name as BrowserName);
+}
+
+/**
+ * Fallback detection - check which browsers have windows open
+ */
+async function detectFrontmostBrowserFallback(): Promise<BrowserName | null> {
+  const browsersToTry: BrowserName[] = ["Arc", "Zen", "Brave Browser", "Google Chrome", "Safari", "Firefox"];
+
+  for (const browser of browsersToTry) {
+    try {
+      const hasWindow = await browserHasWindow(browser);
+      if (hasWindow) {
+        return browser;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if a browser has at least one window open
+ */
+async function browserHasWindow(browser: BrowserName): Promise<boolean> {
   try {
     const { stdout } = await execa("osascript", [
       "-e",
       `
       tell application "System Events"
-        set frontApp to name of first application process whose frontmost is true
-        return frontApp
+        if not (exists process "${browser}") then return false
+      end tell
+      tell application "${browser}"
+        return (count of windows) > 0
       end tell
     `,
     ]);
-
-    const appName = stdout.trim();
-
-    // Map app names to our browser types
-    if (appName === "Safari") return "Safari";
-    if (appName === "Google Chrome") return "Google Chrome";
-    if (appName === "Arc") return "Arc";
-    if (appName === "Firefox") return "Firefox";
-
-    return null;
+    return stdout.trim() === "true";
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -155,11 +281,17 @@ async function getTabFromBrowser(browser: BrowserName): Promise<BrowserTab> {
       throw new Error(`Invalid response from ${browser}`);
     }
 
-    const url = lines[0].trim();
+    let url = lines[0].trim();
     const title = lines.slice(1).join("\n").trim(); // Title might have newlines
 
-    // Validate URL
-    new URL(url); // Throws if invalid
+    // Firefox returns placeholder "https://" when URL not available
+    // In that case, leave empty for user to fill in
+    if (url === "https://") {
+      url = "";
+    } else {
+      // Validate URL for other browsers
+      new URL(url); // Throws if invalid
+    }
 
     return {
       url,

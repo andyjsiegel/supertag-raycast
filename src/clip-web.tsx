@@ -20,6 +20,7 @@ import {
   type WebClip,
   type BrowserTab,
   type OpenGraphMeta,
+  type BrowserName,
 } from "./lib/web-clipper";
 import { listSupertags, createTanaNode, type SupertagInfo } from "./lib/cli";
 import { showErrorWithFallback } from "./lib/fallbacks";
@@ -71,14 +72,14 @@ export default function Command() {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        // Get active tab
+        // Get active tab (auto-detects frontmost browser)
         const tab = await getActiveTab();
         setBrowserTab(tab);
         setUrl(tab.url);
         setTitle(tab.title);
 
         // Get selection
-        const sel = await getSelection(tab.browser as any);
+        const sel = await getSelection(tab.browser as BrowserName);
         if (sel) {
           setSelection(sel);
         }
@@ -146,23 +147,35 @@ export default function Command() {
     try {
       const tagName = supertag.replace(/^#/, "");
 
-      // Build fields
-      const fields: Record<string, string> = {
-        URL: url,
-      };
-      if (description) {
-        fields.Description = description;
+      // Build fields - map to correct field names based on supertag
+      const fields: Record<string, string> = {};
+
+      // URL field varies by supertag
+      if (tagName === "article") {
+        fields["Source URL"] = url;
+      } else {
+        fields.URL = url;
       }
+
+      // Author field
       if (metadata?.author) {
         fields.Author = metadata.author;
       }
 
-      // Create node with selection as content
-      // Note: supertag-cli create doesn't support arbitrary children yet
-      // so we include selection in the name or as a field
-      const nodeName = selection ? `${title}\n${selection}` : title;
+      // TODO: Generalize before release - current mapping is schema-specific
+      // Options: 1) Query schema for text fields, 2) User-configurable mapping,
+      // 3) Add as child node instead of field, 4) Convention-based (Notes/Summary/Highlight)
+      if (selection) {
+        if (tagName === "bookmark") {
+          fields.Snapshot = selection;
+        } else if (tagName === "resource") {
+          fields.Summary = selection;
+        } else if (tagName === "reference") {
+          fields.Notes = selection;
+        }
+      }
 
-      const result = await createTanaNode(tagName, nodeName, fields);
+      const result = await createTanaNode(tagName, title, fields);
 
       if (result.success) {
         toast.style = Toast.Style.Success;
