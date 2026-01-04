@@ -58,14 +58,21 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       const result = await getSupertag(supertag.tagName);
       if (result.success && result.data) {
         setSchema(result.data);
-        // Initialize field values
-        const initial: Record<string, string> = {};
-        for (const field of result.data.fields) {
-          initial[field.fieldName] = "";
-        }
-        setFieldValues(initial);
 
-        // Load options for "options" and "reference" type fields
+        // Initialize field values - only set once to preserve user input
+        setFieldValues((prev) => {
+          const initial: Record<string, string> = {};
+          for (const field of result.data.fields) {
+            // Preserve existing value if user already started typing
+            initial[field.fieldName] = prev[field.fieldName] || "";
+          }
+          return initial;
+        });
+
+        // Stop loading indicator immediately so user can start typing
+        setIsLoading(false);
+
+        // Load options in background (doesn't block user input)
         const optionsFields = result.data.fields.filter(
           (f) => f.inferredDataType === "options" || f.inferredDataType === "reference"
         );
@@ -90,8 +97,9 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
           optionsMap[fieldName] = options;
         }
         setFieldOptions(optionsMap);
+      } else {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
     loadSchema();
   }, [supertag.tagName]);
@@ -198,6 +206,14 @@ function FieldInput({
     ? `From ${field.originTagName}`
     : undefined;
 
+  // Format date in local timezone (not UTC) to avoid off-by-one errors
+  const formatDateLocal = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   switch (field.inferredDataType) {
     case "date":
       return (
@@ -205,7 +221,7 @@ function FieldInput({
           id={field.fieldLabelId}
           title={title}
           value={value ? new Date(value) : null}
-          onChange={(date) => onChange(date?.toISOString().split("T")[0] || "")}
+          onChange={(date) => onChange(date ? formatDateLocal(date) : "")}
         />
       );
 
