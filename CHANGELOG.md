@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Schema Cache (Spec 081)** - Fast file-based schema loading for 20-50x performance improvement
+  - New `SchemaCache` class reads schema-registry.json directly from filesystem
+  - Form rendering now <10ms vs 200-500ms with CLI spawning
+  - mtime-based cache invalidation automatically refreshes after sync
+  - Graceful fallback to CLI if cache unavailable or corrupted
+  - Development logging for cache hit/miss tracking
+  - 11 tests passing for cache loading, invalidation, and error handling
+  - Requires supertag-cli 1.5.0+ for enhanced schema-registry.json with target supertags
+
 ### Changed
 
 - **Reference Field Target Supertags** - Use stored target supertag from CLI instead of field name heuristics
