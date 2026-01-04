@@ -406,8 +406,11 @@ class DisabledProvider implements AIProvider { ... } // Returns empty/null
 
 - ~~Should clips support images (og:image as attachment)?~~ → **Yes, included**
 - Should there be a "reading list" queue before Tana sync?
+  -> no
 - Integration with existing "Capture to Tana" command or separate?
+  -> separate
 - Should AI features require explicit opt-in per clip or be configurable default?
+  -> by default. have a settings dialog for local ollama or API key for Claude
 
 ## Out of Scope (for now)
 

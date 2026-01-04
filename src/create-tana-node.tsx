@@ -51,8 +51,11 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fieldOptions, setFieldOptions] = useState<Record<string, FieldOption[]>>({});
 
-  // Use ref to store name value (uncontrolled approach)
+  // Use ref to store name value - stable across re-renders
   const nameRef = useRef("");
+
+  // Initialize visibleFields with empty array to prevent structure changes
+  const [visibleFields, setVisibleFields] = useState<SupertagField[]>([]);
 
   useEffect(() => {
     async function loadSchema() {
@@ -100,10 +103,18 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       if (schemaData) {
         setSchema(schemaData);
 
+        // Filter and set visible fields
+        const filtered = schemaData.fields.filter((f) => {
+          // Skip very deep inherited fields
+          if (f.depth > 2) return false;
+          return true;
+        });
+        setVisibleFields(filtered);
+
         // Initialize field values - only set once to preserve user input
         setFieldValues((prev) => {
           const initial: Record<string, string> = {};
-          for (const field of schemaData.fields) {
+          for (const field of filtered) {
             // Preserve existing value if user already started typing
             initial[field.fieldName] = prev[field.fieldName] || "";
           }
@@ -197,13 +208,6 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
     }
   }
 
-  // Filter fields to show only direct and first-level inherited fields
-  const visibleFields = schema?.fields.filter((f) => {
-    // Skip very deep inherited fields
-    if (f.depth > 2) return false;
-    return true;
-  }) || [];
-
   return (
     <Form
       actions={
@@ -223,7 +227,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         }}
       />
 
-      {visibleFields.length > 0 && <Form.Separator />}
+      <Form.Separator />
 
       {visibleFields.map((field) => (
         <FieldInput
