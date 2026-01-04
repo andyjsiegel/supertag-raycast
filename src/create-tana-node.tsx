@@ -21,6 +21,7 @@ import {
   type SupertagField,
   type FieldOption,
 } from "./lib/cli";
+import { SchemaCache } from "./lib/schema-cache";
 
 /**
  * Map field data type to Raycast form component type
@@ -54,14 +55,52 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
   useEffect(() => {
     async function loadSchema() {
-      const result = await getSupertag(supertag.tagName);
-      if (result.success && result.data) {
-        setSchema(result.data);
+      // Spec 081 T-3.1, T-3.2: Try SchemaCache first, fallback to CLI
+      const cache = new SchemaCache();
+      const cachedSchema = cache.getSupertag(supertag.tagName);
+
+      let schemaData: SupertagSchema | null = null;
+      let cacheHit = false;
+
+      if (cachedSchema) {
+        // Spec 081 T-3.4: Cache hit - log for development
+        if (process.env.NODE_ENV === "development") {
+          console.log("[SchemaCache] Cache HIT:", supertag.tagName);
+        }
+        cacheHit = true;
+
+        // Convert cached schema to SupertagSchema format
+        schemaData = {
+          tagId: cachedSchema.id,
+          tagName: cachedSchema.name,
+          fields: cachedSchema.fields.map((f) => ({
+            fieldName: f.name,
+            fieldLabelId: f.attributeId,
+            originTagName: f.originTagName || cachedSchema.name,
+            depth: f.depth ?? 0,
+            inferredDataType: f.dataType as any,
+            targetSupertagId: f.targetSupertag?.id,
+            targetSupertagName: f.targetSupertag?.name,
+          })),
+        };
+      } else {
+        // Spec 081 T-3.2: Cache miss - fallback to CLI
+        if (process.env.NODE_ENV === "development") {
+          console.log("[SchemaCache] Cache MISS, using CLI:", supertag.tagName);
+        }
+        const result = await getSupertag(supertag.tagName);
+        if (result.success && result.data) {
+          schemaData = result.data;
+        }
+      }
+
+      if (schemaData) {
+        setSchema(schemaData);
 
         // Initialize field values - only set once to preserve user input
         setFieldValues((prev) => {
           const initial: Record<string, string> = {};
-          for (const field of result.data.fields) {
+          for (const field of schemaData.fields) {
             // Preserve existing value if user already started typing
             initial[field.fieldName] = prev[field.fieldName] || "";
           }
@@ -72,7 +111,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         setIsLoading(false);
 
         // Load options in background (doesn't block user input)
-        const optionsFields = result.data.fields.filter(
+        const optionsFields = schemaData.fields.filter(
           (f) => f.inferredDataType === "options" || f.inferredDataType === "reference"
         );
         const optionsPromises = optionsFields.map(async (field) => {
@@ -81,7 +120,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
             const optResult = await getFieldOptions(field.fieldName);
             return { fieldName: field.fieldName, options: optResult.data || [] };
           } else {
-            // Reference field - use stored target supertag name from field definition
+            // Spec 081 T-3.3: Reference field - use cached targetSupertagName
             if (field.targetSupertagName) {
               const optResult = await getNodesBySupertag(field.targetSupertagName);
               return { fieldName: field.fieldName, options: optResult.data || [] };
