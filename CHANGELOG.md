@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Inheritance-Aware Reference Field Options** - Options from Supertag fields now show nodes with inheriting tags
+  - Uses new `--include-descendants` flag in supertag-cli
+  - Finds all supertags inheriting from the target and queries for nodes with ANY of them
+  - Example: "Origin" field (targetSupertag: "Source | Origin") now shows nodes tagged with todo, project, Area, meeting, etc. (40 descendant tags)
+  - Fixes reference fields appearing empty when they should show many options
+  - Requires supertag-cli 1.6.0+ with --include-descendants support
+
 - **Reference Field Target Supertags** - Use stored target supertag from CLI instead of field name heuristics
   - Updated `SupertagField` interface to include `targetSupertagId` and `targetSupertagName`
   - Form now uses `field.targetSupertagName` to load dropdown options for reference fields
