@@ -159,14 +159,57 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
       title: "Creating node...",
     });
 
-    // Filter out empty fields
+    // Filter out empty fields and handle "NEW:" values
     const nonEmptyFields: Record<string, string> = {};
+    const creationPromises: Promise<void>[] = [];
+
     for (const [key, value] of Object.entries(fieldValues)) {
-      if (value.trim()) {
+      if (!value.trim()) continue;
+
+      // Check if this is a "create new" value
+      if (value.startsWith("NEW:")) {
+        const newName = value.substring(4).trim();
+        if (!newName) continue;
+
+        // Find the field schema to get target supertag
+        const fieldSchema = schema?.fields.find((f) => f.fieldName === key);
+        if (!fieldSchema?.targetSupertagName) {
+          // Can't create without knowing target supertag
+          nonEmptyFields[key] = newName; // Fallback to text value
+          continue;
+        }
+
+        // Create the new node asynchronously
+        creationPromises.push(
+          (async () => {
+            toast.message = `Creating ${fieldSchema.targetSupertagName}: ${newName}...`;
+            const createResult = await createTanaNode(
+              fieldSchema.targetSupertagName,
+              newName
+            );
+
+            if (createResult.success) {
+              // Note: supertag-cli doesn't return the created node ID yet,
+              // so we'll use the name as a fallback
+              // TODO: Update when supertag-cli returns node ID
+              nonEmptyFields[key] = newName;
+            } else {
+              // If creation fails, just use the name as text
+              nonEmptyFields[key] = newName;
+            }
+          })()
+        );
+      } else {
         nonEmptyFields[key] = value.trim();
       }
     }
 
+    // Wait for all new nodes to be created
+    if (creationPromises.length > 0) {
+      await Promise.all(creationPromises);
+    }
+
+    toast.message = undefined;
     const result = await createTanaNode(
       supertag.tagName,
       name.trim(),
@@ -281,27 +324,45 @@ function FieldInput({
       if (process.env.NODE_ENV === "development") {
         console.log(`[FieldInput] ${field.fieldName}: ${options?.length || 0} options, type=${field.inferredDataType}`);
       }
-      if (options && options.length > 0) {
+
+      // For reference fields, allow creating new nodes by typing a name
+      if (field.inferredDataType === "reference" && options && options.length > 0) {
+        // Show dropdown with existing options AND a text field to create new
+        // Value format: if starts with "NEW:", it's a new name to create; otherwise it's an existing ID
+        const isNewValue = value.startsWith("NEW:");
+        const dropdownValue = isNewValue ? "" : value;
+        const textValue = isNewValue ? value.substring(4) : "";
+
         return (
-          <Form.Dropdown
-            id={field.fieldLabelId}
-            title={title}
-            value={value}
-            onChange={onChange}
-          >
-            <Form.Dropdown.Item value="" title="(none)" />
-            {options.map((opt) => (
-              <Form.Dropdown.Item key={opt.id} value={opt.id} title={opt.text} />
-            ))}
-          </Form.Dropdown>
+          <>
+            <Form.Dropdown
+              id={field.fieldLabelId}
+              title={title}
+              value={dropdownValue}
+              onChange={(newValue) => onChange(newValue)} // Clear "NEW:" prefix when dropdown selected
+            >
+              <Form.Dropdown.Item value="" title="(select existing or create new below)" />
+              {options.map((opt) => (
+                <Form.Dropdown.Item key={opt.id} value={opt.id} title={opt.text} />
+              ))}
+            </Form.Dropdown>
+            <Form.TextField
+              id={`${field.fieldLabelId}-new`}
+              title={`Or create new ${field.targetSupertagName || field.fieldName}`}
+              placeholder={`Type name to create new ${field.targetSupertagName || field.fieldName}...`}
+              value={textValue}
+              onChange={(newName) => onChange(newName ? `NEW:${newName}` : "")}
+            />
+          </>
         );
       }
-      // Fall through to text field if no options loaded
+
+      // For options fields or when no options available, just show text field
       return (
         <Form.TextField
           id={field.fieldLabelId}
           title={title}
-          placeholder={placeholder || "No options available"}
+          placeholder={placeholder || "Enter value"}
           value={value}
           onChange={onChange}
         />

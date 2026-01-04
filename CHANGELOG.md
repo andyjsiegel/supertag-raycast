@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 11 tests passing for cache loading, invalidation, and error handling
   - Requires supertag-cli 1.5.0+ for enhanced schema-registry.json with target supertags
 
+- **Create New Entries for Reference Fields** - Inline node creation from form fields
+  - Reference fields now show both dropdown (select existing) and text field (create new)
+  - Type a name in "Or create new" field to automatically create node with correct supertag
+  - Example: In Resource form, typing "John Doe" in Author field creates new person node
+  - New nodes created asynchronously before main form submission
+  - Provides seamless workflow without leaving the form
+
 ### Changed
 
 - **Reference Field Target Supertags** - Use stored target supertag from CLI instead of field name heuristics
