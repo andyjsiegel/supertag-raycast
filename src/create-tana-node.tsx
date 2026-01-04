@@ -9,7 +9,7 @@ import {
   Icon,
   useNavigation,
 } from "@raycast/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   listSupertags,
   getSupertag,
@@ -52,6 +52,22 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
   const [name, setName] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fieldOptions, setFieldOptions] = useState<Record<string, FieldOption[]>>({});
+
+  // Use ref to preserve name across re-renders
+  const nameRef = useRef("");
+
+  // Custom handler that updates both state and ref
+  const handleNameChange = (newName: string) => {
+    nameRef.current = newName;
+    setName(newName);
+  };
+
+  // Restore name from ref if it gets cleared by a re-render
+  useEffect(() => {
+    if (!name && nameRef.current) {
+      setName(nameRef.current);
+    }
+  }, [name, schema, fieldOptions]);
 
   useEffect(() => {
     async function loadSchema() {
@@ -230,7 +246,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         title="Name"
         placeholder={`Enter ${supertag.tagName} name...`}
         value={name}
-        onChange={setName}
+        onChange={handleNameChange}
         autoFocus
       />
 
