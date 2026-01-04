@@ -47,7 +47,6 @@ function getFieldIcon(dataType: string): Icon {
  * Dynamic form for creating a node with the selected supertag
  */
 function NodeForm({ supertag }: { supertag: SupertagInfo }) {
-  const [isLoading, setIsLoading] = useState(true);
   const [schema, setSchema] = useState<SupertagSchema | null>(null);
   const [name, setName] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -71,9 +70,7 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
   useEffect(() => {
     async function loadSchema() {
-      // Stop loading immediately so user can start typing in name field
-      // Schema and options will load in background without blocking input
-      setIsLoading(false);
+      // Load schema in background without blocking user input
 
       // Spec 081 T-3.1, T-3.2: Try SchemaCache first, fallback to CLI
       const cache = new SchemaCache();
@@ -234,7 +231,6 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
   return (
     <Form
-      isLoading={isLoading}
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Create Node" onSubmit={handleSubmit} />
@@ -247,7 +243,6 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         placeholder={`Enter ${supertag.tagName} name...`}
         value={name}
         onChange={handleNameChange}
-        autoFocus
       />
 
       {visibleFields.length > 0 && <Form.Separator />}
