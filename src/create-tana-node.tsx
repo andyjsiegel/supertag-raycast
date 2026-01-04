@@ -9,7 +9,7 @@ import {
   Icon,
   useNavigation,
 } from "@raycast/api";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, memo, useCallback } from "react";
 import {
   listSupertags,
   getSupertag,
@@ -44,6 +44,34 @@ function getFieldIcon(dataType: string): Icon {
 }
 
 /**
+ * Isolated name field component that doesn't re-render when parent state changes
+ */
+const NameField = memo(({
+  supertag,
+  onNameChange
+}: {
+  supertag: SupertagInfo;
+  onNameChange: (name: string) => void;
+}) => {
+  const [name, setName] = useState("");
+
+  const handleChange = (newName: string) => {
+    setName(newName);
+    onNameChange(newName);
+  };
+
+  return (
+    <Form.TextField
+      id="name"
+      title="Name"
+      placeholder={`Enter ${supertag.tagName} name...`}
+      value={name}
+      onChange={handleChange}
+    />
+  );
+});
+
+/**
  * Dynamic form for creating a node with the selected supertag
  */
 function NodeForm({ supertag }: { supertag: SupertagInfo }) {
@@ -56,6 +84,11 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
 
   // Initialize visibleFields with empty array to prevent structure changes
   const [visibleFields, setVisibleFields] = useState<SupertagField[]>([]);
+
+  // Stable callback for name changes - wrapped in useCallback so NameField doesn't re-render
+  const handleNameChange = useCallback((newName: string) => {
+    nameRef.current = newName;
+  }, []);
 
   useEffect(() => {
     async function loadSchema() {
@@ -216,15 +249,9 @@ function NodeForm({ supertag }: { supertag: SupertagInfo }) {
         </ActionPanel>
       }
     >
-      <Form.TextField
-        id="name"
-        title="Name"
-        placeholder={`Enter ${supertag.tagName} name...`}
-        defaultValue=""
-        storeValue
-        onChange={(newName) => {
-          nameRef.current = newName;
-        }}
+      <NameField
+        supertag={supertag}
+        onNameChange={handleNameChange}
       />
 
       <Form.Separator />
