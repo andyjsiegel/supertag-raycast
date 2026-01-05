@@ -344,7 +344,21 @@ export async function getSelection(
       timeout: 5000,
     });
 
-    const selection = stdout.trim();
+    let selection = stdout.trim();
+
+    // Strip surrounding quotes that AppleScript may add
+    if (
+      (selection.startsWith('"') && selection.endsWith('"')) ||
+      (selection.startsWith("'") && selection.endsWith("'"))
+    ) {
+      selection = selection.slice(1, -1);
+    }
+
+    // Also handle the literal empty string '""'
+    if (selection === '""' || selection === "''") {
+      return null;
+    }
+
     return selection || null;
   } catch {
     return null;

@@ -90,3 +90,70 @@ export {
   type ClipData,
   type MapOptions,
 } from "./field-mapper";
+
+// Template types
+export {
+  type ClipTemplate as TemplateClipTemplate,
+  type TemplateContext,
+  type RenderedTemplate,
+  type FilterFunction,
+  type FilterRegistry,
+} from "./template-types";
+
+// Template filters
+export {
+  truncate,
+  defaultValue,
+  lower,
+  upper,
+  capitalize,
+  strip,
+  wordcount,
+  readtime,
+  format,
+  first,
+  last,
+  replace,
+  trim,
+  join,
+  wrap,
+  hideif,
+  defaultFilters,
+  parseFilterExpression,
+  applyFilters,
+} from "./filters";
+
+// Template engine
+export {
+  renderTemplateString,
+  renderTemplate,
+  matchesDomainPattern,
+  findMatchingTemplate,
+  createTemplateContext,
+  validateTemplate,
+} from "./template";
+
+// Builtin templates
+export {
+  builtinTemplates,
+  getBuiltinTemplate,
+  isBuiltinTemplate,
+  githubRepoTemplate,
+  githubIssueTemplate,
+  youtubeTemplate,
+  twitterTemplate,
+  mediumTemplate,
+  hackerNewsTemplate,
+  redditTemplate,
+  wikipediaTemplate,
+  stackOverflowTemplate,
+  genericArticleTemplate,
+} from "./builtin-templates";
+
+// Smart field mapping
+export {
+  createSmartFieldMapping,
+  applySmartFieldMapping,
+  getTemplateFieldNames,
+  type SmartFieldMapping,
+} from "./field-mapper-smart";

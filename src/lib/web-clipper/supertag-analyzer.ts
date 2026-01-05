@@ -8,6 +8,8 @@ const SCORES = {
   TEXT_FIELD: 5,
   AUTHOR_FIELD: 2,
   DESCRIPTION_FIELD: 3,
+  CLIP_FRIENDLY_NAME: 15, // Bonus for names suggesting web clipping
+  NON_CLIP_NAME: -20, // Penalty for names clearly not for clipping
 };
 
 /**
@@ -18,6 +20,18 @@ const PATTERNS = {
   TEXT: /^(notes?|summary|highlights?|snapshot|content|excerpt|description|text)/i,
   AUTHOR: /^(author|creator|by|writer)/i,
   DESCRIPTION: /^(description|summary|about|overview)/i,
+};
+
+/**
+ * Tag name patterns
+ */
+const TAG_PATTERNS = {
+  // Tags that are likely meant for web clipping
+  CLIP_FRIENDLY:
+    /^(bookmark|article|resource|link|clip|reading|reference|paper|post|video|tweet|repo|repository|website|page|doc|document)s?$/i,
+  // Tags that are clearly NOT for web clipping
+  NON_CLIP:
+    /^(meeting|person|people|contact|project|task|todo|event|calendar|company|organization|team|goal|objective|initiative)s?$/i,
 };
 
 /**
@@ -69,6 +83,13 @@ export function analyzeSupertag(supertag: CachedSupertag): AnalyzedSupertag {
   let hasAuthorField = false;
   let authorFieldName: string | undefined;
   let descriptionFieldName: string | undefined;
+
+  // Score based on tag name
+  if (TAG_PATTERNS.CLIP_FRIENDLY.test(supertag.name)) {
+    score += SCORES.CLIP_FRIENDLY_NAME;
+  } else if (TAG_PATTERNS.NON_CLIP.test(supertag.name)) {
+    score += SCORES.NON_CLIP_NAME;
+  }
 
   for (const field of supertag.fields) {
     // Check for URL field
@@ -153,7 +174,9 @@ export function findClipFriendlySupertags(
  *
  * Priority: notes > summary > highlight > snapshot > first text field
  */
-export function getBestTextFieldName(analyzed: AnalyzedSupertag): string | undefined {
+export function getBestTextFieldName(
+  analyzed: AnalyzedSupertag,
+): string | undefined {
   const priority = ["Notes", "Summary", "Highlight", "Snapshot"];
 
   for (const preferred of priority) {
