@@ -18,7 +18,18 @@ declare namespace Preferences {
   /** Preferences accessible in the `create-tana-node` command */
   export type CreateTanaNode = ExtensionPreferences & {}
   /** Preferences accessible in the `clip-web` command */
-  export type ClipWeb = ExtensionPreferences & {}
+  export type ClipWeb = ExtensionPreferences & {
+  /** AI Provider - AI provider for summarization and key point extraction */
+  "aiProvider": "disabled" | "claude" | "ollama",
+  /** Claude API Key - Anthropic API key (starts with sk-ant-) */
+  "claudeApiKey"?: string,
+  /** Ollama Endpoint - Ollama API endpoint */
+  "ollamaEndpoint": string,
+  /** Ollama Model - Ollama model name */
+  "ollamaModel": string,
+  /** Auto-summarize articles - Automatically generate summary when extracting full article */
+  "autoSummarize": boolean
+}
 }
 
 declare namespace Arguments {

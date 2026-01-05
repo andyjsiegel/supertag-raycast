@@ -27,10 +27,70 @@
       "name": "clip-web",
       "title": "Clip Web Page to Tana",
       "description": "Clip the current browser tab to Tana with URL, title, and selection",
-      "mode": "view"
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "aiProvider",
+          "type": "dropdown",
+          "required": false,
+          "title": "AI Provider",
+          "description": "AI provider for summarization and key point extraction",
+          "default": "disabled",
+          "data": [
+            {
+              "title": "Disabled",
+              "value": "disabled"
+            },
+            {
+              "title": "Claude (Anthropic)",
+              "value": "claude"
+            },
+            {
+              "title": "Ollama (Local)",
+              "value": "ollama"
+            }
+          ]
+        },
+        {
+          "name": "claudeApiKey",
+          "type": "password",
+          "required": false,
+          "title": "Claude API Key",
+          "description": "Anthropic API key (starts with sk-ant-)",
+          "placeholder": "sk-ant-..."
+        },
+        {
+          "name": "ollamaEndpoint",
+          "type": "textfield",
+          "required": false,
+          "title": "Ollama Endpoint",
+          "description": "Ollama API endpoint",
+          "default": "http://localhost:11434",
+          "placeholder": "http://localhost:11434"
+        },
+        {
+          "name": "ollamaModel",
+          "type": "textfield",
+          "required": false,
+          "title": "Ollama Model",
+          "description": "Ollama model name",
+          "default": "llama3.2",
+          "placeholder": "llama3.2"
+        },
+        {
+          "name": "autoSummarize",
+          "type": "checkbox",
+          "required": false,
+          "title": "Auto-summarize articles",
+          "description": "Automatically generate summary when extracting full article",
+          "default": false,
+          "label": "Enable auto-summarization"
+        }
+      ]
     }
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@mozilla/readability": "^0.6.0",
     "@raycast/api": "^1.92.1",
     "@raycast/utils": "^1.19.1",

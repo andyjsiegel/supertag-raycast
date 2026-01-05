@@ -7,6 +7,7 @@ import {
   popToRoot,
   Clipboard,
   Icon,
+  getPreferenceValues,
 } from "@raycast/api";
 import { useState, useEffect, useMemo } from "react";
 import {
@@ -34,6 +35,8 @@ import {
   createSmartFieldMapping,
   applySmartFieldMapping,
   getTemplateFieldNames,
+  // AI
+  createAIProvider,
 } from "./lib/web-clipper";
 import { LocalStorage } from "@raycast/api";
 import { SchemaCache } from "./lib/schema-cache";
@@ -50,6 +53,15 @@ const storage = new WebClipStorage({
 // Schema cache for supertag analysis
 const schemaCache = new SchemaCache();
 
+// Preferences interface
+interface Preferences {
+  aiProvider: "claude" | "ollama" | "disabled";
+  claudeApiKey?: string;
+  ollamaEndpoint?: string;
+  ollamaModel?: string;
+  autoSummarize: boolean;
+}
+
 /**
  * Create a WebClip from current state
  */
@@ -60,6 +72,8 @@ function createClipFromState(
   highlightTexts: string[],
   metadata: OpenGraphMeta | null,
   articleContent?: string,
+  aiSummary?: string,
+  aiKeypoints?: string[],
 ): WebClip {
   return {
     url,
@@ -73,6 +87,8 @@ function createClipFromState(
       .filter((text) => text && text.trim())
       .map((text) => ({ text })),
     content: articleContent,
+    summary: aiSummary,
+    keypoints: aiKeypoints,
     clippedAt: new Date().toISOString(),
   };
 }
@@ -94,6 +110,7 @@ export default function Command() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
 
   // Data
   const [browserTab, setBrowserTab] = useState<BrowserTab | null>(null);
@@ -111,6 +128,26 @@ export default function Command() {
     null,
   );
   const [useTemplate, setUseTemplate] = useState(true);
+
+  // AI state
+  const [aiSummary, setAiSummary] = useState<string | undefined>();
+  const [aiKeypoints, setAiKeypoints] = useState<string[] | undefined>();
+
+  // Initialize AI provider from preferences
+  const preferences = getPreferenceValues<Preferences>();
+  const aiProvider = useMemo(() => {
+    try {
+      return createAIProvider({
+        provider: preferences.aiProvider,
+        claudeApiKey: preferences.claudeApiKey,
+        ollamaEndpoint: preferences.ollamaEndpoint,
+        ollamaModel: preferences.ollamaModel,
+        autoSummarize: preferences.autoSummarize,
+      });
+    } catch {
+      return null; // Fallback to disabled if config invalid
+    }
+  }, [preferences]);
 
   // Load initial data from browser
   useEffect(() => {
@@ -308,6 +345,8 @@ export default function Command() {
       allHighlights,
       metadata,
       article?.markdown,
+      aiSummary,
+      aiKeypoints,
     );
     return buildTanaPasteFromClip(clip, supertag);
   }, [
@@ -319,6 +358,8 @@ export default function Command() {
     metadata,
     article,
     renderedTemplate,
+    aiSummary,
+    aiKeypoints,
   ]);
 
   // Handle save to Tana
@@ -380,6 +421,27 @@ export default function Command() {
       // Build children (highlights + article content)
       const children: TanaChildNode[] = [];
 
+      // Add AI summary to fields if available and supertag has summary field
+      if (aiSummary && supertagSchema) {
+        const summaryMapping = createSmartFieldMapping(
+          ["Summary"],
+          supertagSchema,
+        );
+        const summaryFieldName = summaryMapping.fieldMap["Summary"];
+        if (summaryFieldName) {
+          fields[summaryFieldName] = aiSummary;
+        }
+      }
+
+      // Add AI key points as structured child if available
+      if (aiKeypoints && aiKeypoints.length > 0) {
+        const keypointsNode: TanaChildNode = {
+          name: "Key Points",
+          children: aiKeypoints.map((point) => ({ name: point })),
+        };
+        children.push(keypointsNode);
+      }
+
       // Add highlights as children (clean newlines)
       for (const highlight of allHighlights) {
         const cleaned = highlight.replace(/\n/g, " ").trim();
@@ -389,9 +451,12 @@ export default function Command() {
       }
 
       // Add article content as children, nesting paragraphs under headlines
-      // Track total size to stay under 5000 char API limit
-      let totalChars = JSON.stringify(fields).length + title.length;
-      const MAX_PAYLOAD_SIZE = 4500; // Leave buffer for JSON overhead
+      // Track total size to stay under Tana Input API 5000 char limit
+      let totalChars =
+        JSON.stringify(fields).length +
+        title.length +
+        JSON.stringify(children).length;
+      const MAX_PAYLOAD_SIZE = 4800; // Leave buffer for JSON overhead (Tana API limit: 5000)
       let wasTruncated = false;
 
       if (article?.markdown) {
@@ -425,15 +490,13 @@ export default function Command() {
           if (!currentHeadline) return;
           // Only add headline if it has children or is meaningful
           if (currentHeadline.children && currentHeadline.children.length > 0) {
-            if (
-              totalChars + JSON.stringify(currentHeadline).length >
-              MAX_PAYLOAD_SIZE
-            ) {
+            const headlineSize = JSON.stringify(currentHeadline).length;
+            if (totalChars + headlineSize > MAX_PAYLOAD_SIZE) {
               wasTruncated = true;
               return;
             }
             children.push(currentHeadline);
-            totalChars += currentHeadline.name.length;
+            totalChars += headlineSize; // Add full serialized size, not just name
           } else {
             // Headline without children - add as plain text
             children.push({ name: currentHeadline.name });
@@ -544,9 +607,88 @@ export default function Command() {
     setHighlights(highlights.filter((_, i) => i !== index));
   }
 
+  // AI: Summarize article
+  async function handleSummarize() {
+    if (!aiProvider || !article?.markdown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Cannot summarize",
+        message: "Extract article first and configure AI provider",
+      });
+      return;
+    }
+
+    setIsAiProcessing(true);
+    try {
+      const result = await aiProvider.process({
+        url,
+        title,
+        content: article.markdown,
+        operation: "summarize",
+      });
+
+      if (result.summary) {
+        setAiSummary(result.summary);
+        setDescription(result.summary);
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Summary generated",
+        });
+      }
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Summarization failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsAiProcessing(false);
+    }
+  }
+
+  // AI: Extract key points
+  async function handleExtractKeypoints() {
+    if (!aiProvider || !article?.markdown) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Cannot extract key points",
+        message: "Extract article first and configure AI provider",
+      });
+      return;
+    }
+
+    setIsAiProcessing(true);
+    try {
+      const result = await aiProvider.process({
+        url,
+        title,
+        content: article.markdown,
+        operation: "extract-keypoints",
+      });
+
+      if (result.keypoints && result.keypoints.length > 0) {
+        setAiKeypoints(result.keypoints);
+        setHighlights([...highlights, ...result.keypoints]);
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Key points extracted",
+          message: `${result.keypoints.length} points`,
+        });
+      }
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Key point extraction failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsAiProcessing(false);
+    }
+  }
+
   return (
     <Form
-      isLoading={isLoading || isSaving || isExtracting}
+      isLoading={isLoading || isSaving || isExtracting || isAiProcessing}
       actions={
         <ActionPanel>
           <Action.SubmitForm
@@ -566,6 +708,22 @@ export default function Command() {
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
             onAction={handleCopyTanaPaste}
           />
+          {article && aiProvider && (
+            <>
+              <Action
+                title="Summarize with AI"
+                icon={Icon.Stars}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "s" }}
+                onAction={handleSummarize}
+              />
+              <Action
+                title="Extract Key Points"
+                icon={Icon.BulletPoints}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
+                onAction={handleExtractKeypoints}
+              />
+            </>
+          )}
         </ActionPanel>
       }
     >
@@ -751,6 +909,8 @@ export default function Command() {
           text={`${article.readingTime} min read • ${article.length.toLocaleString()} characters${article.byline ? ` • ${article.byline}` : ""}`}
         />
       )}
+
+      {aiSummary && <Form.Description title="AI Summary" text={aiSummary} />}
     </Form>
   );
 }
