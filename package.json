@@ -7,6 +7,7 @@
   "author": "fischer",
   "categories": ["Productivity"],
   "license": "MIT",
+  "version": "0.2.0",
   "commands": [
     {
       "name": "capture-tana",
