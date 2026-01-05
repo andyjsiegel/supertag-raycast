@@ -80,24 +80,29 @@ function NameInputForm({ supertag }: { supertag: SupertagInfo }) {
             f.inferredDataType === "reference",
         );
         const optionsPromises = optionsFields.map(async (field) => {
+          // For "options" fields, always use historical field values
+          // (even if targetSupertag is set - that's just metadata about valid values)
           if (field.inferredDataType === "options") {
             const optResult = await getFieldOptions(field.fieldName);
             return {
               fieldName: field.fieldName,
               options: optResult.data || [],
             };
-          } else {
-            if (field.targetSupertagName) {
-              const optResult = await getNodesBySupertag(
-                field.targetSupertagName,
-              );
-              return {
-                fieldName: field.fieldName,
-                options: optResult.data || [],
-              };
-            }
-            return { fieldName: field.fieldName, options: [] };
           }
+          // For "reference" fields with targetSupertag, fetch nodes by supertag
+          if (
+            field.inferredDataType === "reference" &&
+            field.targetSupertagName
+          ) {
+            const optResult = await getNodesBySupertag(
+              field.targetSupertagName,
+            );
+            return {
+              fieldName: field.fieldName,
+              options: optResult.data || [],
+            };
+          }
+          return { fieldName: field.fieldName, options: [] };
         });
         const optionsResults = await Promise.all(optionsPromises);
         const optionsMap: Record<string, FieldOption[]> = {};
@@ -351,7 +356,28 @@ function FieldInput({
         );
       }
 
-      // For options fields or when no options available, just show text field
+      // For options fields, show dropdown (no "create new" option)
+      if (options && options.length > 0) {
+        return (
+          <Form.Dropdown
+            id={field.fieldLabelId}
+            title={title}
+            value={value}
+            onChange={onChange}
+          >
+            <Form.Dropdown.Item value="" title="(none)" />
+            {options.map((opt) => (
+              <Form.Dropdown.Item
+                key={opt.id}
+                value={opt.text}
+                title={opt.text}
+              />
+            ))}
+          </Form.Dropdown>
+        );
+      }
+
+      // Fallback to text field when no options available
       return (
         <Form.TextField
           id={field.fieldLabelId}
