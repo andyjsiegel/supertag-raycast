@@ -24,6 +24,16 @@ import {
   WebClipStorage,
   findClipFriendlySupertags,
   type AnalyzedSupertag,
+  // Template system
+  builtinTemplates,
+  findMatchingTemplate,
+  createTemplateContext,
+  renderTemplate,
+  type TemplateClipTemplate as ClipTemplate,
+  // Smart field mapping
+  createSmartFieldMapping,
+  applySmartFieldMapping,
+  getTemplateFieldNames,
 } from "./lib/web-clipper";
 import { LocalStorage } from "@raycast/api";
 import { SchemaCache } from "./lib/schema-cache";
@@ -59,7 +69,9 @@ function createClipFromState(
     author: metadata?.author,
     siteName: metadata?.siteName,
     publishedDate: metadata?.publishedTime,
-    highlights: highlightTexts.map((text) => ({ text })),
+    highlights: highlightTexts
+      .filter((text) => text && text.trim())
+      .map((text) => ({ text })),
     content: articleContent,
     clippedAt: new Date().toISOString(),
   };
@@ -86,8 +98,19 @@ export default function Command() {
   // Data
   const [browserTab, setBrowserTab] = useState<BrowserTab | null>(null);
   const [metadata, setMetadata] = useState<OpenGraphMeta | null>(null);
-  const [analyzedSupertags, setAnalyzedSupertags] = useState<AnalyzedSupertag[]>([]);
+  const [analyzedSupertags, setAnalyzedSupertags] = useState<
+    AnalyzedSupertag[]
+  >([]);
   const [article, setArticle] = useState<ExtractedArticle | null>(null);
+
+  // Template state
+  const [matchedTemplate, setMatchedTemplate] = useState<ClipTemplate | null>(
+    null,
+  );
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    null,
+  );
+  const [useTemplate, setUseTemplate] = useState(true);
 
   // Load initial data from browser
   useEffect(() => {
@@ -112,21 +135,26 @@ export default function Command() {
           setSupertag(domainPref.supertag);
         }
 
-        // Fetch metadata in background
-        fetchMetadata(tab.url)
-          .then((meta) => {
-            setMetadata(meta);
-            // Use OG title if better than document title
-            if (meta.title && meta.title.length > tab.title.length) {
-              setTitle(meta.title);
-            }
-            if (meta.description) {
-              setDescription(meta.description);
-            }
-          })
-          .catch(() => {
-            // Metadata fetch failed, continue with basic info
-          });
+        // Fetch metadata in background (skip for sites that block scraping)
+        const blockedDomains = ["twitter.com", "x.com", "mobile.twitter.com"];
+        const isBlocked = blockedDomains.some((d) => domain.includes(d));
+
+        if (!isBlocked) {
+          fetchMetadata(tab.url)
+            .then((meta) => {
+              setMetadata(meta);
+              // Use OG title if better than document title
+              if (meta.title && meta.title.length > tab.title.length) {
+                setTitle(meta.title);
+              }
+              if (meta.description) {
+                setDescription(meta.description);
+              }
+            })
+            .catch(() => {
+              // Metadata fetch failed, continue with basic info
+            });
+        }
 
         // Load and analyze supertags from schema cache
         const allSupertags = schemaCache.getAllSupertags();
@@ -148,6 +176,33 @@ export default function Command() {
 
     loadInitialData();
   }, []);
+
+  // Match template when URL changes
+  useEffect(() => {
+    if (!url) {
+      setMatchedTemplate(null);
+      return;
+    }
+    const matched = findMatchingTemplate(url, builtinTemplates);
+    setMatchedTemplate(matched);
+    if (matched && !selectedTemplateId) {
+      setSelectedTemplateId(matched.id);
+      // Update supertag to match template
+      setSupertag(matched.supertag);
+    }
+  }, [url]);
+
+  // Get active template (selected or matched)
+  const activeTemplate = useMemo(() => {
+    if (!useTemplate) return null;
+    if (selectedTemplateId) {
+      return (
+        builtinTemplates.find((t) => t.id === selectedTemplateId) ||
+        matchedTemplate
+      );
+    }
+    return matchedTemplate;
+  }, [useTemplate, selectedTemplateId, matchedTemplate]);
 
   // Extract article when toggle is enabled
   useEffect(() => {
@@ -189,16 +244,63 @@ export default function Command() {
   }, [extractArticle, url]);
 
   // Build live preview - include current highlight with saved ones
+  // Filter out any empty or whitespace-only highlights
   const allHighlights = useMemo(() => {
-    const all = [...highlights];
-    if (currentHighlight.trim()) {
-      all.push(currentHighlight.trim());
+    const all = highlights.filter((h) => h && h.trim().length > 0);
+    const trimmedCurrent = currentHighlight?.trim();
+    if (trimmedCurrent && trimmedCurrent.length > 0) {
+      all.push(trimmedCurrent);
     }
     return all;
   }, [highlights, currentHighlight]);
 
+  // Build template context for rendering
+  const templateContext = useMemo(() => {
+    if (!url || !title) return null;
+    // Only include selection if there are actual highlights
+    const selectionText =
+      allHighlights.length > 0 ? allHighlights.join("\n") : undefined;
+    return createTemplateContext({
+      url,
+      title,
+      description: description || metadata?.description,
+      author: metadata?.author,
+      selection: selectionText,
+      content: article?.markdown,
+      siteName: metadata?.siteName,
+      readtime: article?.readingTime,
+    });
+  }, [url, title, description, metadata, allHighlights, article]);
+
+  // Render template fields if template is active
+  const renderedTemplate = useMemo(() => {
+    if (!activeTemplate || !templateContext) return null;
+    return renderTemplate(activeTemplate, templateContext);
+  }, [activeTemplate, templateContext]);
+
   const preview = useMemo(() => {
     if (!url || !title) return "";
+
+    // If template rendered fields, show them in preview
+    if (renderedTemplate) {
+      const lines = [`%%tana%%`, `- ${title} ${renderedTemplate.supertag}`];
+      for (const [fieldName, fieldValue] of Object.entries(
+        renderedTemplate.fields,
+      )) {
+        lines.push(`  - ${fieldName}:: ${fieldValue}`);
+      }
+      if (renderedTemplate.content) {
+        lines.push(`  - ${renderedTemplate.content}`);
+      }
+      for (const highlight of allHighlights) {
+        lines.push(
+          `  - ${highlight.slice(0, 100)}${highlight.length > 100 ? "..." : ""}`,
+        );
+      }
+      return lines.join("\n");
+    }
+
+    // Fallback to standard preview
     const clip = createClipFromState(
       url,
       title,
@@ -208,7 +310,16 @@ export default function Command() {
       article?.markdown,
     );
     return buildTanaPasteFromClip(clip, supertag);
-  }, [url, title, description, allHighlights, supertag, metadata, article]);
+  }, [
+    url,
+    title,
+    description,
+    allHighlights,
+    supertag,
+    metadata,
+    article,
+    renderedTemplate,
+  ]);
 
   // Handle save to Tana
   async function handleSave() {
@@ -229,22 +340,42 @@ export default function Command() {
     });
 
     try {
-      const tagName = supertag.replace(/^#/, "");
+      // Use template supertag if available, otherwise use selected supertag
+      const effectiveSupertag = renderedTemplate?.supertag || supertag;
+      const tagName = effectiveSupertag.replace(/^#/, "");
 
-      // Build fields (metadata only)
-      const fields: Record<string, string> = {
-        URL: url,
-      };
-      if (metadata?.description) {
-        fields.Description = metadata.description;
+      // Look up the supertag schema for smart field mapping
+      const supertagSchema = schemaCache
+        .getAllSupertags()
+        .find((s) => s.name.toLowerCase() === tagName.toLowerCase());
+
+      // Build fields - use template fields if available, otherwise metadata
+      let fields: Record<string, string> = renderedTemplate?.fields
+        ? { ...renderedTemplate.fields }
+        : {
+            URL: url,
+            ...(metadata?.description && { Description: metadata.description }),
+            ...(metadata?.author && { Author: metadata.author }),
+            ...(metadata?.siteName && { Site: metadata.siteName }),
+          };
+
+      // Apply smart field mapping if we have a schema
+      if (supertagSchema && activeTemplate) {
+        const templateFieldNames = getTemplateFieldNames(activeTemplate.fields);
+        const mapping = createSmartFieldMapping(
+          templateFieldNames,
+          supertagSchema,
+        );
+        fields = applySmartFieldMapping(fields, mapping);
       }
-      if (metadata?.author) {
-        fields.Author = metadata.author;
-      }
-      if (metadata?.siteName) {
-        fields.Site = metadata.siteName;
-      }
-      fields.Clipped = new Date().toISOString().split("T")[0];
+
+      // Always add clipped date (also with smart mapping)
+      const clippedFieldName = supertagSchema
+        ? createSmartFieldMapping(["Clipped"], supertagSchema).fieldMap[
+            "Clipped"
+          ]
+        : "Clipped";
+      fields[clippedFieldName] = new Date().toISOString().split("T")[0];
 
       // Build children (highlights + article content)
       const children: TanaChildNode[] = [];
@@ -294,7 +425,10 @@ export default function Command() {
           if (!currentHeadline) return;
           // Only add headline if it has children or is meaningful
           if (currentHeadline.children && currentHeadline.children.length > 0) {
-            if (totalChars + JSON.stringify(currentHeadline).length > MAX_PAYLOAD_SIZE) {
+            if (
+              totalChars + JSON.stringify(currentHeadline).length >
+              MAX_PAYLOAD_SIZE
+            ) {
               wasTruncated = true;
               return;
             }
@@ -351,7 +485,8 @@ export default function Command() {
         const domain = extractDomain(url);
         await storage.saveDomainPreference({
           domain,
-          supertag,
+          supertag: effectiveSupertag,
+          templateId: activeTemplate?.id,
           lastUsed: new Date().toISOString(),
         });
 
@@ -404,8 +539,8 @@ export default function Command() {
     }
   }
 
-  // Remove a highlight by index
-  function handleRemoveHighlight(index: number) {
+  // Remove a highlight by index (future: add remove button to UI)
+  function _handleRemoveHighlight(index: number) {
     setHighlights(highlights.filter((_, i) => i !== index));
   }
 
@@ -457,13 +592,22 @@ export default function Command() {
         placeholder="Add a text highlight..."
         value={currentHighlight}
         onChange={setCurrentHighlight}
-        info={highlights.length > 0 ? `Press ⌘+Enter to add another highlight` : undefined}
+        info={
+          highlights.length > 0
+            ? `Press ⌘+Enter to add another highlight`
+            : undefined
+        }
       />
 
       {highlights.length > 0 && (
         <Form.Description
           title="Saved Highlights"
-          text={highlights.map((h, i) => `${i + 1}. ${h.slice(0, 60)}${h.length > 60 ? "..." : ""}`).join("\n")}
+          text={highlights
+            .map(
+              (h, i) =>
+                `${i + 1}. ${h.slice(0, 60)}${h.length > 60 ? "..." : ""}`,
+            )
+            .join("\n")}
         />
       )}
 
@@ -483,11 +627,59 @@ export default function Command() {
         info="Extract the main article content as markdown using Readability"
       />
 
+      <Form.Separator />
+
+      <Form.Dropdown
+        id="template"
+        title="Template"
+        value={selectedTemplateId || "none"}
+        onChange={(value) => {
+          if (value === "none") {
+            setSelectedTemplateId(null);
+            setUseTemplate(false);
+          } else {
+            setSelectedTemplateId(value);
+            setUseTemplate(true);
+            // Update supertag to match template
+            const template = builtinTemplates.find((t) => t.id === value);
+            if (template) {
+              setSupertag(template.supertag);
+            }
+          }
+        }}
+        info={
+          matchedTemplate ? `Auto-detected: ${matchedTemplate.name}` : undefined
+        }
+      >
+        <Form.Dropdown.Item
+          value="none"
+          title="No Template"
+          icon={Icon.XMarkCircle}
+        />
+        <Form.Dropdown.Section title="Builtin Templates">
+          {builtinTemplates.map((template) => (
+            <Form.Dropdown.Item
+              key={template.id}
+              value={template.id}
+              title={template.name}
+              icon={
+                matchedTemplate?.id === template.id
+                  ? Icon.CheckCircle
+                  : Icon.Document
+              }
+            />
+          ))}
+        </Form.Dropdown.Section>
+      </Form.Dropdown>
+
       <Form.Dropdown
         id="supertag"
         title="Supertag"
         value={supertag}
         onChange={setSupertag}
+        info={
+          activeTemplate ? `From template: ${activeTemplate.name}` : undefined
+        }
       >
         {analyzedSupertags.length > 0 ? (
           <>

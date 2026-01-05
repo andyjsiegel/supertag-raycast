@@ -9,7 +9,10 @@ import { calculateReadingTime } from "./content";
  * @param url - Base URL for resolving relative links
  * @returns DOM Document
  */
-export async function parseHTMLToDOM(html: string, url: string): Promise<Document> {
+export async function parseHTMLToDOM(
+  html: string,
+  url: string,
+): Promise<Document> {
   const { document } = parseHTML(html);
   // Set the base URL for relative link resolution
   if (url) {

@@ -2,7 +2,6 @@ import { describe, it, expect } from "bun:test";
 import {
   analyzeSupertag,
   findClipFriendlySupertags,
-  type AnalyzedSupertag,
 } from "../../web-clipper/supertag-analyzer";
 import type { CachedSupertag, CachedField } from "../../schema-cache";
 
@@ -28,7 +27,9 @@ function createSupertag(
 describe("Supertag Analyzer", () => {
   describe("analyzeSupertag", () => {
     it("should score supertag with URL field high", () => {
-      const supertag = createSupertag("bookmark", [{ name: "URL", dataType: "url" }]);
+      const supertag = createSupertag("bookmark", [
+        { name: "URL", dataType: "url" },
+      ]);
       const result = analyzeSupertag(supertag);
 
       expect(result.hasUrlField).toBe(true);

@@ -50,7 +50,8 @@ describe("Markdown converter", () => {
     });
 
     it("should convert code blocks", () => {
-      const html = '<pre><code class="language-javascript">const x = 1;</code></pre>';
+      const html =
+        '<pre><code class="language-javascript">const x = 1;</code></pre>';
       const md = htmlToMarkdown(html);
       expect(md).toContain("```javascript");
       expect(md).toContain("const x = 1;");

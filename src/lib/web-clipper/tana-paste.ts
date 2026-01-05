@@ -39,10 +39,12 @@ export function buildTanaPaste(options: TanaPasteOptions): string {
     }
   }
 
-  // Add highlights as child nodes
+  // Add highlights as child nodes (filter empty)
   if (options.highlights) {
     for (const highlight of options.highlights) {
-      lines.push(`  - ${highlight}`);
+      if (highlight && highlight.trim()) {
+        lines.push(`  - ${highlight}`);
+      }
     }
   }
 
@@ -99,10 +101,12 @@ export function buildTanaPasteFromClip(
     }
   }
 
-  // Highlights as child nodes
+  // Highlights as child nodes (filter empty)
   if (clip.highlights.length > 0) {
     for (const highlight of clip.highlights) {
-      lines.push(`  - ${highlight.text}`);
+      if (highlight.text && highlight.text.trim()) {
+        lines.push(`  - ${highlight.text}`);
+      }
     }
   }
 

@@ -34,9 +34,7 @@ function createAnalyzed(supertag: CachedSupertag): AnalyzedSupertag {
       (f) => f.dataType === "url" || f.name.toLowerCase().includes("url"),
     )?.name,
     textFields: supertag.fields
-      .filter((f) =>
-        /^(notes?|summary|highlights?|snapshot)/i.test(f.name),
-      )
+      .filter((f) => /^(notes?|summary|highlights?|snapshot)/i.test(f.name))
       .map((f) => f.name),
     hasAuthorField: supertag.fields.some((f) =>
       /^(author|creator)/i.test(f.name),
