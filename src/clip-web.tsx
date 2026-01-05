@@ -37,8 +37,6 @@ import {
   getTemplateFieldNames,
   // AI
   createAIProvider,
-  fetchOllamaModels,
-  type OllamaModel,
 } from "./lib/web-clipper";
 import { LocalStorage } from "@raycast/api";
 import { SchemaCache } from "./lib/schema-cache";
@@ -60,6 +58,7 @@ interface Preferences {
   aiProvider: "claude" | "ollama" | "disabled";
   claudeApiKey?: string;
   ollamaEndpoint?: string;
+  ollamaModel?: string;
   autoSummarize: boolean;
   autoExtractKeypoints: boolean;
   autoSaveFullText: boolean;
@@ -136,54 +135,22 @@ export default function Command() {
   const [aiSummary, setAiSummary] = useState<string | undefined>();
   const [aiKeypoints, setAiKeypoints] = useState<string[] | undefined>();
 
-  // Ollama model state
-  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
-  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>("");
-  const [isLoadingModels, setIsLoadingModels] = useState(false);
-
   // Initialize AI provider from preferences
   const preferences = getPreferenceValues<Preferences>();
 
-  // Fetch Ollama models when provider is Ollama
-  useEffect(() => {
-    if (preferences.aiProvider !== "ollama") {
-      setOllamaModels([]);
-      return;
-    }
-
-    async function loadModels() {
-      setIsLoadingModels(true);
-      try {
-        const models = await fetchOllamaModels(preferences.ollamaEndpoint);
-        setOllamaModels(models);
-        // Select first model by default if none selected
-        if (models.length > 0 && !selectedOllamaModel) {
-          setSelectedOllamaModel(models[0].name);
-        }
-      } catch {
-        setOllamaModels([]);
-      } finally {
-        setIsLoadingModels(false);
-      }
-    }
-
-    loadModels();
-  }, [preferences.aiProvider, preferences.ollamaEndpoint]);
-
-  // Create AI provider (depends on selected Ollama model)
   const aiProvider = useMemo(() => {
     try {
       return createAIProvider({
         provider: preferences.aiProvider,
         claudeApiKey: preferences.claudeApiKey,
         ollamaEndpoint: preferences.ollamaEndpoint,
-        ollamaModel: selectedOllamaModel || undefined,
+        ollamaModel: preferences.ollamaModel,
         autoSummarize: preferences.autoSummarize,
       });
     } catch {
       return null; // Fallback to disabled if config invalid
     }
-  }, [preferences, selectedOllamaModel]);
+  }, [preferences]);
 
   // Load initial data from browser
   useEffect(() => {
@@ -902,40 +869,6 @@ export default function Command() {
         onChange={setExtractArticle}
         info="Extract the main article content as markdown using Readability"
       />
-
-      {preferences.aiProvider === "ollama" && (
-        <Form.Dropdown
-          id="ollamaModel"
-          title="Ollama Model"
-          value={selectedOllamaModel}
-          onChange={setSelectedOllamaModel}
-          isLoading={isLoadingModels}
-          info={
-            ollamaModels.length === 0 && !isLoadingModels
-              ? "No models found. Is Ollama running?"
-              : undefined
-          }
-        >
-          {ollamaModels.length > 0 ? (
-            ollamaModels.map((model) => (
-              <Form.Dropdown.Item
-                key={model.name}
-                value={model.name}
-                title={model.name}
-                icon={Icon.ComputerChip}
-              />
-            ))
-          ) : (
-            <Form.Dropdown.Item
-              value=""
-              title={
-                isLoadingModels ? "Loading models..." : "No models available"
-              }
-              icon={Icon.Warning}
-            />
-          )}
-        </Form.Dropdown>
-      )}
 
       <Form.Separator />
 

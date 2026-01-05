@@ -25,6 +25,8 @@ declare namespace Preferences {
   "claudeApiKey"?: string,
   /** Ollama Endpoint - Ollama API endpoint */
   "ollamaEndpoint": string,
+  /** Ollama Model - Model to use for AI features (must be installed locally) */
+  "ollamaModel": "llama3.2" | "llama3.2:1b" | "llama3.2:3b" | "llama3.1:8b" | "llama3.1:70b" | "mistral" | "mixtral" | "gemma2:9b" | "gemma2:27b" | "qwen2.5:7b" | "phi3" | "codellama:7b",
   /** Auto Features - Automatically generate summary when extracting article */
   "autoSummarize": boolean,
   /** undefined - Automatically extract key points when extracting article */

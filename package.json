@@ -69,6 +69,28 @@
           "placeholder": "http://localhost:11434"
         },
         {
+          "name": "ollamaModel",
+          "type": "dropdown",
+          "required": false,
+          "title": "Ollama Model",
+          "description": "Model to use for AI features (must be installed locally)",
+          "default": "llama3.2",
+          "data": [
+            { "title": "Llama 3.2 (Default)", "value": "llama3.2" },
+            { "title": "Llama 3.2 1B", "value": "llama3.2:1b" },
+            { "title": "Llama 3.2 3B", "value": "llama3.2:3b" },
+            { "title": "Llama 3.1 8B", "value": "llama3.1:8b" },
+            { "title": "Llama 3.1 70B", "value": "llama3.1:70b" },
+            { "title": "Mistral 7B", "value": "mistral" },
+            { "title": "Mixtral 8x7B", "value": "mixtral" },
+            { "title": "Gemma 2 9B", "value": "gemma2:9b" },
+            { "title": "Gemma 2 27B", "value": "gemma2:27b" },
+            { "title": "Qwen 2.5 7B", "value": "qwen2.5:7b" },
+            { "title": "Phi-3 Mini", "value": "phi3" },
+            { "title": "CodeLlama 7B", "value": "codellama:7b" }
+          ]
+        },
+        {
           "name": "autoSummarize",
           "type": "checkbox",
           "required": false,
