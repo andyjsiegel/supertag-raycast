@@ -175,7 +175,9 @@ The **Create Tana Node** command provides a dynamic form builder for Tana:
 ## Prerequisites
 
 - [Raycast](https://raycast.com/) installed
-- `supertag` CLI ([supertag-cli](https://github.com/jcfischer/supertag-cli)) installed at `~/bin/supertag`
+- `supertag-cli` version 1.11.0+ ([supertag-cli](https://github.com/jcfischer/supertag-cli)) installed at `~/bin/supertag`
+  - **Important**: Version 1.11.0+ includes `supertag-lite` binary that fixes exit 137 crashes
+  - The extension uses the compiled binary for reliability
 - Tana workspace synced via supertag-cli
 
 ## Installation

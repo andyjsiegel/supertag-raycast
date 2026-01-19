@@ -1,0 +1,19 @@
+# PAI Dependency Manifest (auto-generated)
+# Review and adjust as needed
+name: supertag
+version: 0.3.0
+type: library
+description: Quick access to Tana via supertag-cli - capture nodes and create structured content
+
+provides:
+  library:
+    - export: default
+  # cli:
+  #   - command: "supertag <subcommand>"
+
+depends_on:
+  - name: supertag-cli
+    type: cli
+
+reliability: 0.95
+debt_score: 0

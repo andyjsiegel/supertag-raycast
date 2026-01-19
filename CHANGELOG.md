@@ -5,6 +5,24 @@ All notable changes to KAI Raycast integration are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-19
+
+### Fixed
+
+- **Compiled Binary Crash (exit undefined)** - Fixed "Failed to create node (exit undefined)" error in web clipper
+  - Root cause: supertag binary crashed with exit code 137 due to @lancedb/lancedb native module incompatibility with Bun's --compile
+  - Solution: Updated CLI wrapper to support supertag-lite binary (without embeddings)
+  - Added `SUPERTAG_ARGS_PREFIX` infrastructure for flexible command execution
+  - All commands now work reliably with compiled binary
+  - Requires supertag-cli 1.11.0+ with supertag-lite binary
+
+### Changed
+
+- **CLI Command Execution** - Refactored all CLI function calls to support argument prefix pattern
+  - Updated `captureTana`, `capturePlainNode`, `listSupertags`, `getSupertag`, `createTanaNode`, `getFieldOptions`, `getNodesBySupertag`, `getNodeChildren` to use `SUPERTAG_ARGS_PREFIX`
+  - Enables running supertag via different execution methods without changing function signatures
+  - Improved code consistency and maintainability
+
 ## [0.3.0] - 2026-01-05
 
 ### Added
